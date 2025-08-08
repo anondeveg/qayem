@@ -1,0 +1,7 @@
+pillow==11.3.0
+pyaes==1.6.1
+pyasn1==0.6.1
+PyMuPDF==1.26.3
+python-dotenv==1.1.1
+rsa==4.9.1
+Telethon==1.40.0

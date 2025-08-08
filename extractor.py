@@ -15,7 +15,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-
 # Set the upload folder where files will be stored
 highlight_dir = "highlights"
 try:
@@ -27,7 +26,8 @@ os.makedirs(highlight_dir, exist_ok=True)
 
 class HighlightExtractor:
     def __init__(self, book_name: str, highlight_dir: str):
-        self.temp_uuid = str(uuid.uuid4())  # Create a unique identifier for each book
+        # Create a unique identifier for each book
+        self.temp_uuid = str(uuid.uuid4())
         self.output_dir = (
             Path(highlight_dir) / self.temp_uuid
         )  # Folder will be inside uploads with a unique UUID
@@ -52,7 +52,8 @@ class HighlightExtractor:
                 page = doc.load_page(page_num)
             except Exception as e:
                 logger.error(
-                    f"Error loading page {page_num} from PDF {pdf_path}: {str(e)}"
+                    f"Error loading page {page_num} from PDF {
+                        pdf_path}: {str(e)}"
                 )
                 continue
 
@@ -64,8 +65,11 @@ class HighlightExtractor:
 
             if highlights:
                 try:
-                    pix = page.get_pixmap()
-                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    ZOOM = 4.0
+                    mat = fitz.Matrix(ZOOM, ZOOM)
+                    pix = page.get_pixmap(matrix=mat)
+                    img = Image.frombytes(
+                        "RGB", [pix.width, pix.height], pix.samples)
                     img = img.convert("RGB")  # Ensure the image is in RGB mode
                 except Exception as e:
                     logger.error(
@@ -74,10 +78,11 @@ class HighlightExtractor:
                     continue
 
                 try:
-                    first_page_resized = first_page_image.resize(
-                        (int((0.15 * img.width)),int((0.15 * img.height)))
-                    )
-                    img.paste(first_page_resized,(0,0)) # put first page on the top left of the highlight
+                    # first_page_resized = first_page_image.resize(
+                    #    (int((0.15 * img.width)), int((0.15 * img.height)))
+                    # )
+                    # put first page on the top left of the highlight
+                    # img.paste(first_page_resized, (0, 0))
                     combined_image = img
                 except Exception as e:
                     logger.error(
@@ -101,10 +106,11 @@ class HighlightExtractor:
                         f.write(image_buffer.read())
                 except Exception as e:
                     logger.error(
-                        f"Error saving image {combined_image_filename}: {str(e)}"
+                        f"Error saving image {
+                            combined_image_filename}: {str(e)}"
                     )
                     continue
-                p = (str(combined_image_path.absolute()),page_num)
+                p = (str(combined_image_path.absolute()), page_num)
                 print(p)
                 highlight_images.append(p)
 
@@ -121,7 +127,8 @@ class HighlightExtractor:
             return img
         except Exception as e:
             logger.error(
-                f"Error extracting the first page image from {pdf_path}: {str(e)}"
+                f"Error extracting the first page image from {
+                    pdf_path}: {str(e)}"
             )
             raise
 
@@ -156,7 +163,8 @@ if __name__ == "__main__":
     extracted_images = extract_highlights_from_pdf(pdf_file_path)
     if extracted_images:
         print(
-            f"Highlight images saved in folder: {str(Path(highlight_dir) / Path(pdf_file_path).stem)}"
+            f"Highlight images saved in folder: {
+                str(Path(highlight_dir) / Path(pdf_file_path).stem)}"
         )
         for image in extracted_images:
             print(f"Saved: {image}")

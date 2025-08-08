@@ -1,95 +1,70 @@
-import asyncio
-import logging 
-import sys
-from os import getenv
 import os
+import asyncio
+from os import getenv
 from dotenv import load_dotenv
+from telethon import TelegramClient, events
 from extractor import extract_highlights_from_pdf
-from aiogram.types import FSInputFile
-from aiogram.client.telegram import TelegramAPIServer
-from bs4 import BeautifulSoup
-import requests
-from gofile_downloader import Download
-from aiogram import Bot, Dispatcher, html
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
-from aiogram.types import Message
-from aiogram.types import FSInputFile
+from telethon.tl.types import DocumentAttributeFilename
+from telethon.tl.types import MessageMediaDocument
+from telethon.sessions import StringSession
 
-load_dotenv()
+# Load environment variables
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(dotenv_path)
 
-TOKEN = str(getenv("BOT_TOKEN"))
-print(TOKEN)
+API_ID = int(getenv('API_ID'))
+API_HASH = getenv('API_HASH')
+BOT_TOKEN = getenv('BOT_TOKEN')
 
+# Ensure download directory exists
+os.makedirs('books_files', exist_ok=True)
 
-dp = Dispatcher() #Router
-
-@dp.message(CommandStart())
-async def command_start_handler(message:Message) -> None:
-    await message.answer(f"  مرحبًا {html.bold(message.from_user.full_name)}")
+# Create and start the bot client
+client = TelegramClient('bot_session', API_ID,
+                        API_HASH).start(bot_token=BOT_TOKEN)
 
 
-@dp.message()
-async def highlights_extractor(message: Message) -> None:
+@client.on(events.NewMessage(pattern='/start'))
+async def handler_start(event):
+    user = await event.get_sender()
+    name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    await event.reply(f"مرحبًا {name}")
+
+
+@client.on(events.NewMessage(func=lambda e: bool(e.media)))
+async def handler_document(event):
     """
-    document: file_id='BQACAgQAAxkBAAO9Z7v2m6F2jYi4Ii_wwOmuOP8MrPwAAskZAALA-uBR2GLStb4jUMI2BA' 
-    file_unique_id='AgADyRkAAsD64FE' 
-    thumbnail=PhotoSize(file_id='AAMCBAADGQEAA71nu_aboXaNiLgiL_DA6a44_wys_AACyRkAAsD64FHYYtK1viNQwgEAB20AAzYE',
-    file_unique_id='AQADyRkAAsD64FFy',
-    width=320,
-    height=180,
-    file_size=1071) 
-    file_name='640قيم_كبير.png' 
-    mime_type='image/png' 
-    file_size=809 
-    thumb={'file_id': 'AAMCBAADGQEAA71nu_aboXaNiLgiL_DA6a44_wys_AACyRkAAsD64FHYYtK1viNQwgEAB20AAzYE', 
-    'file_unique_id': 'AQADyRkAAsD64FFy', 
-    'file_size': 1071,
-    'width': 320, 
-    'height': 180}
+    Handles incoming documents (PDFs), downloads, extracts highlights, and replies with images.
     """
     try:
-        if message.document:
-            if message.document.mime_type == message.document.mime_type:#"application/pdf": # is pdf 
-                # download pdf 
-                doc = message.document
-                file_name  = doc.file_name
-                file_id = message.document.file_id
-                path = f"books_files/{file_name}"
-                await message.bot.download(file=doc,destination=path)
-        elif "https://gofile.io/d" in message.text: # user sent a gofile url
-            
-            path = Download(message.text,download_path=f"books_files/")
-            
-        # TODO save highlights in a user searchable specific way 
-        highlights = extract_highlights_from_pdf(pdf_path=path)
-        print(highlights)
+        media = event.message.media
+        # Check if it's a document with .pdf extension
+        if isinstance(media, MessageMediaDocument):
+            # Find the f lename attribute
+            pdf_attr = next((a for a in media.document.attributes
+                             if isinstance(a, DocumentAttributeFilename)), None)
+            if pdf_attr and pdf_attr.file_name.lower().endswith('.pdf'):
+                file_name = pdf_attr.file_name
+                file_path = f"books_files/{file_name}"
+                # Download the PDF
+                await client.download_media(media, file_path)
+                await event.reply(f"يتم تحميل الملف {file_name}")
+                # Extract highlights
+                highlights = extract_highlights_from_pdf(pdf_path=file_path)
 
-        # send highlights-
-        
-        for image in highlights:
-            img = FSInputFile(str(image[0]))
-            await message.answer_photo(photo=img,caption=f"كتاب:{file_name}\n صفحه:{image[1]}")
-
+                # Send each highlighted image back
+                for img_path, page in highlights:
+                    await client.send_file(
+                        event.chat_id,
+                        img_path,
+                        caption=f"كتاب: {file_name}\nصفحة: {page}"
+                    )
+            else:
+                await client.reply("لا أستطيع معالجة ملف بغير صيغة الPDF")
     except Exception as e:
-        raise e
-        # But not all the types is supported to be copied so need to handle it
-        await message.answer("صيغه غير مدعومه")
+        # You might want to log the error here
+        await event.reply("صيغة غير مدعومة أو حدث خطأ أثناء المعالجة.")
 
-
-
-async def main() -> None:
-    # Initialize Bot instance with default bot properties which will be passed to all API calls
-    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-
-    # And the run events dispatching
-    await dp.start_polling(bot,skip_updates=True)
-
-if __name__ == "__main__":
-    try:
-        os.mkdir("books_files")
-    except:
-        pass
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
-    asyncio.run(main())
+if __name__ == '__main__':
+    print("Bot is running...")
+    client.run_until_disconnected()
