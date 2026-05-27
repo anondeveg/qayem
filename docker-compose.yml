@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  qayem-web:
+    build: .
+    container_name: qayem_web_app
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persist settings, uploaded files, and generated highlight crop images on the host machine
+      - ./uploads:/app/uploads
+      - ./highlights:/app/highlights
+      # Mount the local .env to allow settings changes from the web page to reflect on the host
+      - ./.env:/app/.env
+    restart: unless-stopped
