@@ -1,8 +1,8 @@
 import os
 os.environ['PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT'] = '0'
-os.environ['OMP_NUM_THREADS'] = '1'
-os.environ['MKL_NUM_THREADS'] = '1'
-os.environ['CPU_NUM'] = '1'
+os.environ['OMP_NUM_THREADS'] = '2'
+os.environ['MKL_NUM_THREADS'] = '2'
+os.environ['CPU_NUM'] = '2'
 import io
 import logging
 from pathlib import Path
@@ -345,9 +345,11 @@ def extract_highlights(
         if progress_callback:
             try:
                 if ocr:
-                    progress_callback(page_num + 1, total_pages * 2)
+                    pct = int((page_num + 1) / total_pages * 50)
+                    progress_callback(page_num + 1, total_pages, phase="parsing", percent=pct)
                 else:
-                    progress_callback(page_num + 1, total_pages)
+                    pct = int((page_num + 1) / total_pages * 100)
+                    progress_callback(page_num + 1, total_pages, phase="parsing", percent=pct)
             except Exception as e:
                 logger.warning(f"Progress callback failed: {e}")
                 
@@ -391,7 +393,7 @@ def extract_highlights(
                 page_rect = page.rect
                 ocr_rect = fitz.Rect(page_rect.x0, rect.y0, page_rect.x1, rect.y1)
                 
-                ocr_zoom = 1.5 if ocr_engine in ("paddleocr", "easyocr") else 4.0
+                ocr_zoom = 1.0 if ocr_engine in ("paddleocr", "easyocr") else 4.0
                 clean_img = crop_region(page, ocr_rect, zoom=ocr_zoom, include_annots=False)
                 
                 # Preprocess image for legacy OCR engines (like Tesseract), but pass raw color image for deep learning engines
@@ -406,7 +408,7 @@ def extract_highlights(
                         page_rect.x1,
                         min(page_rect.y1, rect.y1 + context_margin)
                     )
-                    ocr_c_zoom = 1.5 if ocr_engine in ("paddleocr", "easyocr") else 4.0
+                    ocr_c_zoom = 1.0 if ocr_engine in ("paddleocr", "easyocr") else 4.0
                     clean_c_img = crop_region(page, c_rect, zoom=ocr_c_zoom, include_annots=False)
                     if ocr_engine not in ("paddleocr", "easyocr"):
                         clean_c_img = preprocess_image_for_ocr(clean_c_img)

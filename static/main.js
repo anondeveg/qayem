@@ -208,7 +208,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 const progressRes = await fetch(`/api/progress?task_id=${taskId}`);
                 if (progressRes.ok) {
                     const progressData = await progressRes.json();
-                    if (progressData.total > 0) {
+                    if (progressData.percent !== undefined) {
+                        const pct = progressData.percent;
+                        loaderProgressBar.style.width = `${pct}%`;
+                        if (progressData.phase === "parsing") {
+                            loaderProgressText.textContent = `جاري قراءة صفحات الكتاب: ${progressData.current} من ${progressData.total} (${pct}%)`;
+                        } else if (progressData.phase === "ocr") {
+                            loaderProgressText.textContent = `جاري التعرف الضوئي واستخراج الاقتباسات: ${pct}%`;
+                        }
+                    } else if (progressData.total > 0) {
                         const pct = Math.round((progressData.current / progressData.total) * 100);
                         loaderProgressText.textContent = `جاري معالجة الصفحة ${progressData.current} من ${progressData.total}`;
                         loaderProgressBar.style.width = `${pct}%`;

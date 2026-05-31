@@ -132,10 +132,15 @@ def extract():
                     PROGRESS_STORE.pop(k, None)
             PROGRESS_STORE[task_id] = {"current": 0, "total": 0}
 
-    def progress_cb(current, total):
+    def progress_cb(current, total, phase="parsing", percent=None):
         if task_id:
             with PROGRESS_LOCK:
-                PROGRESS_STORE[task_id] = {"current": current, "total": total}
+                PROGRESS_STORE[task_id] = {
+                    "current": current,
+                    "total": total,
+                    "phase": phase,
+                    "percent": percent
+                }
 
     warnings_list = []
     output_json_path = HIGHLIGHTS_FOLDER / f"{pdf_path.stem}_highlights.json"
