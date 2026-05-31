@@ -14,7 +14,8 @@ class TestOCRSpaceFallback(unittest.TestCase):
         self.pdf_path = "/home/anondev/ai-lab/qayem/test_highlight.pdf"
         
     @patch('requests.post')
-    def test_network_failure_raises_error(self, mock_post):
+    @patch('extractor.is_native_text_valid', return_value=False)
+    def test_network_failure_raises_error(self, mock_bypass, mock_post):
         import requests
         mock_post.side_effect = requests.exceptions.ConnectionError("Simulated offline state")
         
@@ -34,7 +35,8 @@ class TestOCRSpaceFallback(unittest.TestCase):
         print("Success! RuntimeError correctly raised on network failure.")
 
     @patch('requests.post')
-    def test_image_size_exceeded_raises_error(self, mock_post):
+    @patch('extractor.is_native_text_valid', return_value=False)
+    def test_image_size_exceeded_raises_error(self, mock_bypass, mock_post):
         mock_post.return_value = MagicMock()
         with patch('extractor.ocr_space_extract') as mock_ocr_space:
             mock_ocr_space.side_effect = ValueError("Simulated Image size exceeds 1MB limit")
