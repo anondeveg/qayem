@@ -543,8 +543,8 @@ def extract_highlights(
                 completed_ocr += len(chunk)
                 if progress_callback:
                     try:
-                        ocr_prog = total_pages + int((completed_ocr / total_ocr) * total_pages)
-                        progress_callback(ocr_prog, total_pages * 2)
+                        pct = 50 + int((completed_ocr / total_ocr) * 50)
+                        progress_callback(completed_ocr, total_ocr, phase="ocr", percent=pct)
                     except Exception as e:
                         pass
                 save_incremental()
@@ -620,8 +620,8 @@ def extract_highlights(
                     completed_ocr += 1
                     if progress_callback:
                         try:
-                            ocr_prog = total_pages + int((completed_ocr / total_ocr) * total_pages)
-                            progress_callback(ocr_prog, total_pages * 2)
+                            pct = 50 + int((completed_ocr / total_ocr) * 50)
+                            progress_callback(completed_ocr, total_ocr, phase="ocr", percent=pct)
                         except Exception as e:
                             pass
                     save_incremental()
