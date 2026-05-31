@@ -26,59 +26,9 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 HIGHLIGHTS_FOLDER = Path("./highlights")
 HIGHLIGHTS_FOLDER.mkdir(exist_ok=True)
 
-def update_env_file(key: str, value: str):
-    """Update or insert a key-value pair in the .env file and update the current environment."""
-    env_path = Path(".env")
-    lines = []
-    key_found = False
-    
-    if env_path.exists():
-        with open(env_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-            
-    new_lines = []
-    for line in lines:
-        if line.strip().startswith(f"{key}="):
-            new_lines.append(f"{key}={value}\n")
-            key_found = True
-        else:
-            new_lines.append(line)
-            
-    if not key_found:
-        new_lines.append(f"{key}={value}\n")
-        
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.writelines(new_lines)
-        
-    # Update current process environment
-    os.environ[key] = value
-
 @app.route("/")
 def index():
     return render_template("index.html")
-
-@app.route("/api/settings", methods=["GET", "POST"])
-def settings():
-    if request.method == "POST":
-        data = request.json or {}
-        raw_key = data.get("ocr_space_key", "").strip()
-        if not raw_key:
-            return jsonify({"error": "API Key cannot be empty"}), 400
-        try:
-            import re
-            # Split by commas or newlines/carriage returns
-            keys = [k.strip() for k in re.split(r'[\n\r,]+', raw_key) if k.strip()]
-            normalized_key = ",".join(keys)
-            if not normalized_key:
-                return jsonify({"error": "API Key cannot be empty"}), 400
-            update_env_file("OCR_SPACE_KEY", normalized_key)
-            return jsonify({"success": True, "ocr_space_key": normalized_key})
-        except Exception as e:
-            return jsonify({"error": f"Failed to save settings: {str(e)}"}), 500
-    else:
-        current_key = os.getenv("OCR_SPACE_KEY", "K89878519788957")
-        return jsonify({"ocr_space_key": current_key})
-
 
 @app.route("/api/progress", methods=["GET"])
 def get_progress():
@@ -88,7 +38,6 @@ def get_progress():
     with PROGRESS_LOCK:
         progress = PROGRESS_STORE.get(task_id, {"current": 0, "total": 0})
     return jsonify(progress)
-
 
 @app.route("/api/extract", methods=["POST"])
 def extract():
@@ -101,10 +50,6 @@ def extract():
         
     # Get parameters
     task_id = request.form.get("task_id")
-    ocr = request.form.get("ocr", "false").lower() == "true"
-    ocr_engine = request.form.get("ocr_engine", "ocr_space")
-    ocr_space_engine = int(request.form.get("ocr_space_engine", "3"))
-    lang = request.form.get("lang", "ara+eng")
     context = request.form.get("context", "false").lower() == "true"
     
     try:
@@ -115,7 +60,6 @@ def extract():
         
     # Save the file securely
     filename = secure_filename(pdf_file.filename)
-    # Ensure filename doesn't contain spaces that secure_filename strips or modifies too heavily
     if not filename or filename.endswith(".pdf") is False:
         filename = "temp_uploaded_file.pdf"
         
@@ -125,7 +69,6 @@ def extract():
     # Initialize progress store entry
     if task_id:
         with PROGRESS_LOCK:
-            # Clean up progress store if it gets too large
             if len(PROGRESS_STORE) > 100:
                 oldest_keys = list(PROGRESS_STORE.keys())[:50]
                 for k in oldest_keys:
@@ -142,44 +85,22 @@ def extract():
                     "percent": percent
                 }
 
-    warnings_list = []
     output_json_path = HIGHLIGHTS_FOLDER / f"{pdf_path.stem}_highlights.json"
     
     try:
-        # Load the latest environment key just in case it was updated
-        api_key = os.getenv("OCR_SPACE_KEY", "K89878519788957")
-        
-        # Tesseract setup requires system lang paths or setup checks
-        tessdata_dir = None
-        if ocr:
-            # We import setup_ocr_languages from main
-            from main import setup_ocr_languages
-            try:
-                tessdata_dir = setup_ocr_languages(lang)
-            except Exception as e:
-                # Fallback to system dir, but warn
-                app.logger.warning(f"Tesseract language setup warning: {e}")
-                
         # Perform extraction
         highlights = extract_highlights(
             pdf_path=str(pdf_path),
-            ocr=ocr,
-            ocr_engine=ocr_engine,
-            ocr_space_key=api_key,
-            ocr_space_engine=ocr_space_engine,
-            lang=lang,
-            tessdata_dir=tessdata_dir,
             merge_threshold=merge_threshold,
             save_images=True,
             save_dir=str(HIGHLIGHTS_FOLDER),
             context=context,
             context_margin=context_margin,
-            warnings=warnings_list,
             progress_callback=progress_cb,
             output_json_path=str(output_json_path)
         )
         
-        # We can clean up the uploaded PDF file to conserve space
+        # Clean up the uploaded PDF file to conserve space
         if pdf_path.exists():
             pdf_path.unlink()
             
@@ -191,7 +112,6 @@ def extract():
         return jsonify({
             "success": True, 
             "highlights": highlights,
-            "warnings": warnings_list,
             "compiled_pdf_path": compiled_pdf_path
         })
         

@@ -14,10 +14,6 @@ files = {
     "pdf": open(pdf_path, "rb")
 }
 data = {
-    "ocr": "true",
-    "ocr_engine": "paddleocr",
-    "ocr_space_engine": "3",
-    "lang": "ara+eng",
     "context": "true",
     "context_margin": "80.0",
     "merge_threshold": "20.0"

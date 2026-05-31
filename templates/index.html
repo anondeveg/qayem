@@ -7,7 +7,7 @@
     <!-- Google Fonts: Cairo for Arabic, Inter for numbers/English -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="family">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <!-- FontAwesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/style.css">
@@ -21,10 +21,6 @@
                 <h1>قَيِّم</h1>
                 <p>مستخرج الاقتباسات والهايلايتس الذكي من ملفات PDF</p>
             </div>
-            <button id="btnSettings" class="btn-icon-text tooltip" data-tooltip="إعدادات مفتاح API">
-                <i class="fa-solid fa-gear"></i>
-                <span>مفتاح API</span>
-            </button>
         </header>
 
         <!-- Main Workspace -->
@@ -42,56 +38,6 @@
                             <div id="fileInfo" class="file-info" style="display: none;">
                                 <span id="fileName">book.pdf</span>
                                 <span id="fileSize">12 MB</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- OCR Toggles -->
-                    <div class="card card-dark">
-                        <div class="toggle-group">
-                            <div class="toggle-header">
-                                <i class="fa-solid fa-wand-magic-sparkles toggle-icon"></i>
-                                <div class="toggle-title-desc">
-                                    <span class="toggle-title">تفعيل محرك التعرف الضوئي (OCR)</span>
-                                    <span class="toggle-desc">استخدمه للكتب الممسوحة ضوئياً أو الصور</span>
-                                </div>
-                            </div>
-                            <label class="switch">
-                                <input type="checkbox" id="ocrToggle" name="ocr">
-                                <span class="slider round"></span>
-                            </label>
-                        </div>
-
-                        <!-- OCR Options Sub-panel -->
-                        <div id="ocrOptions" class="sub-panel" style="display: none;">
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <label class="form-label" for="ocrEngine">محرك OCR المستخدم</label>
-                                    <select id="ocrEngine" name="ocr_engine" class="form-select">
-                                        <option value="ocr_space" selected>OCR.space (سحابي - افتراضي)</option>
-                                        <option value="paddleocr">PaddleOCR (محلي - دقة عالية)</option>
-                                        <option value="tesseract">Tesseract (محلي - خفيف)</option>
-                                        <option value="easyocr">EasyOCR (محلي - دقة عالية جداً)</option>
-                                    </select>
-                                </div>
-
-                                <div class="form-group" id="engineVersionGroup">
-                                    <label class="form-label" for="ocrSpaceEngine">إصدار محرك OCR.space</label>
-                                    <select id="ocrSpaceEngine" name="ocr_space_engine" class="form-select">
-                                        <option value="3" selected>Engine 3 (الأفضل للعربية والخطوط المتنوعة)</option>
-                                        <option value="1">Engine 1 (الأساسي السريع)</option>
-                                        <option value="2">Engine 2 (للغات اللاتينية)</option>
-                                    </select>
-                                </div>
-
-                                <div class="form-group">
-                                    <label class="form-label" for="lang">لغات المعالجة (رموز Tesseract)</label>
-                                    <select id="lang" name="lang" class="form-select">
-                                        <option value="ara+eng" selected>عربي + إنجليزي</option>
-                                        <option value="ara">عربي فقط</option>
-                                        <option value="eng">إنجليزي فقط</option>
-                                    </select>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -175,7 +121,7 @@
                             <div id="loaderProgressBar" class="progress-bar-fill" style="width: 0%;"></div>
                         </div>
                     </div>
-                    <p id="loaderSubtext">قد تستغرق هذه العملية بعض الوقت بناءً على خيارات OCR المفعلة وحجم المستند.</p>
+                    <p id="loaderSubtext">قد تستغرق هذه العملية بعض الوقت بناءً على حجم المستند.</p>
                 </div>
 
                 <!-- Results List -->
@@ -184,28 +130,6 @@
                 </div>
             </section>
         </main>
-    </div>
-
-    <!-- API Key Settings Modal -->
-    <div id="settingsModal" class="modal-backdrop" style="display: none;">
-        <div class="modal">
-            <div class="modal-header">
-                <h3>إعدادات مفتاح API لـ OCR.space</h3>
-                <button id="btnCloseSettings" class="btn-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p>مفاتيح API الخاصة بك (يتم حفظها محلياً في ملف البيئة <code>.env</code>). أدخل مفتاحاً واحداً في كل سطر. سيقوم النظام بتدوير المفاتيح وتجربة المفتاح التالي في حال فشل أي منها.</p>
-                <div class="form-group">
-                    <label class="form-label" for="apiKeyInput">مفاتيح API لـ OCR.space</label>
-                    <textarea id="apiKeyInput" class="form-input" rows="5" placeholder="أدخل مفاتيح API هنا (مفتاح واحد في كل سطر)..." style="resize: vertical; font-family: monospace; direction: ltr; text-align: left;"></textarea>
-                    <span class="input-hint">سيتم استخدام المفتاح المجاني الافتراضي المتوفر في النظام إذا تركت هذا الحقل فارغاً.</span>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button id="btnSaveSettings" class="btn btn-primary">حفظ المفتاح</button>
-                <button id="btnCancelSettings" class="btn btn-secondary">إلغاء</button>
-            </div>
-        </div>
     </div>
 
     <!-- Notification system -->

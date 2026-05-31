@@ -5,10 +5,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const fileInfo = document.getElementById("fileInfo");
     const fileName = document.getElementById("fileName");
     const fileSize = document.getElementById("fileSize");
-    const ocrToggle = document.getElementById("ocrToggle");
-    const ocrOptions = document.getElementById("ocrOptions");
-    const ocrEngine = document.getElementById("ocrEngine");
-    const engineVersionGroup = document.getElementById("engineVersionGroup");
     const contextToggle = document.getElementById("contextToggle");
     const contextOptions = document.getElementById("contextOptions");
     const extractForm = document.getElementById("extractForm");
@@ -21,13 +17,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnCopyToClipboard = document.getElementById("btnCopyToClipboard");
     const btnDownloadJson = document.getElementById("btnDownloadJson");
     const btnDownloadPdf = document.getElementById("btnDownloadPdf");
-    const btnSettings = document.getElementById("btnSettings");
-    const settingsModal = document.getElementById("settingsModal");
-    const btnCloseSettings = document.getElementById("btnCloseSettings");
-    const btnCancelSettings = document.getElementById("btnCancelSettings");
-    const btnSaveSettings = document.getElementById("btnSaveSettings");
-    const apiKeyInput = document.getElementById("apiKeyInput");
-    const toggleApiKey = document.getElementById("toggleApiKey");
 
     let currentHighlights = [];
     let compiledPdfPath = null;
@@ -57,49 +46,6 @@ document.addEventListener("DOMContentLoaded", () => {
             setTimeout(() => toast.remove(), 300);
         }, 4000);
     }
-
-    // --- Settings / API Key modal ---
-    btnSettings.addEventListener("click", async () => {
-        try {
-            const res = await fetch("/api/settings");
-            const data = await res.json();
-            // Split comma-separated keys from backend and show them newline-separated
-            const keys = data.ocr_space_key ? data.ocr_space_key.split(",") : [];
-            apiKeyInput.value = keys.join("\n");
-            settingsModal.style.display = "flex";
-        } catch (e) {
-            showToast("فشل تحميل مفتاح API", "error");
-        }
-    });
-
-    const closeModal = () => settingsModal.style.display = "none";
-    btnCloseSettings.addEventListener("click", closeModal);
-    btnCancelSettings.addEventListener("click", closeModal);
-
-    btnSaveSettings.addEventListener("click", async () => {
-        const newKey = apiKeyInput.value.trim();
-        if (!newKey) {
-            showToast("الرجاء إدخال مفتاح API صالح", "error");
-            return;
-        }
-        
-        try {
-            const res = await fetch("/api/settings", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ocr_space_key: newKey })
-            });
-            const data = await res.json();
-            if (data.success) {
-                showToast("تم حفظ مفتاح API بنجاح");
-                closeModal();
-            } else {
-                showToast(data.error || "فشل حفظ إعدادات المفتاح", "error");
-            }
-        } catch (e) {
-            showToast("فشل الاتصال بالخادم لحفظ المفتاح", "error");
-        }
-    });
 
     // --- Drag and Drop File Handlers ---
     dropZone.addEventListener("click", () => pdfFile.click());
@@ -135,25 +81,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function handleSelectedFile(file) {
         fileName.textContent = file.name;
-        // Convert to MB
         const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
         fileSize.textContent = `${sizeMB} ميجابايت`;
         
         fileInfo.style.display = "flex";
-        // Hide file drop text and icon
         dropZone.querySelector(".file-icon").style.display = "none";
         dropZone.querySelector(".drop-zone-text").style.display = "none";
     }
 
     // --- Toggle Form Elements ---
-    ocrToggle.addEventListener("change", (e) => {
-        ocrOptions.style.display = e.target.checked ? "block" : "none";
-    });
-
-    ocrEngine.addEventListener("change", (e) => {
-        engineVersionGroup.style.display = e.target.value === "ocr_space" ? "block" : "none";
-    });
-
     contextToggle.addEventListener("change", (e) => {
         contextOptions.style.display = e.target.checked ? "block" : "none";
     });
@@ -171,10 +107,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const formData = new FormData();
         formData.append("pdf", pdfFile.files[0]);
         formData.append("task_id", taskId);
-        formData.append("ocr", ocrToggle.checked);
-        formData.append("ocr_engine", ocrEngine.value);
-        formData.append("ocr_space_engine", document.getElementById("ocrSpaceEngine").value);
-        formData.append("lang", document.getElementById("lang").value);
         formData.append("context", contextToggle.checked);
         formData.append("context_margin", document.getElementById("contextMargin").value);
         formData.append("merge_threshold", document.getElementById("mergeThreshold").value);
@@ -198,13 +130,6 @@ document.addEventListener("DOMContentLoaded", () => {
         loaderProgressBar.style.width = "0%";
 
         loaderText.textContent = "جاري تحميل وقراءة مستند PDF...";
-        let step = 0;
-        const progressInterval = setInterval(() => {
-            step++;
-            if (step === 1 && ocrToggle.checked) loaderText.textContent = "جاري استخراج السطور وتشغيل معالجة الصور...";
-            if (step === 2 && ocrToggle.checked) loaderText.textContent = "جاري إرسال الطلبات إلى محرك التعرف الضوئي...";
-            if (step === 3 && ocrToggle.checked) loaderText.textContent = "جاري محاذاة وترتيب النصوص وتصفية النواتج...";
-        }, 5000);
 
         // Poll progress API every 700ms
         let pollInterval = setInterval(async () => {
@@ -215,11 +140,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (progressData.percent !== undefined) {
                         const pct = progressData.percent;
                         loaderProgressBar.style.width = `${pct}%`;
-                        if (progressData.phase === "parsing") {
-                            loaderProgressText.textContent = `جاري قراءة صفحات الكتاب: ${progressData.current} من ${progressData.total} (${pct}%)`;
-                        } else if (progressData.phase === "ocr") {
-                            loaderProgressText.textContent = `جاري التعرف الضوئي واستخراج الاقتباسات: ${pct}%`;
-                        }
+                        loaderProgressText.textContent = `جاري قراءة صفحات الكتاب: ${progressData.current} من ${progressData.total} (${pct}%)`;
                     } else if (progressData.total > 0) {
                         const pct = Math.round((progressData.current / progressData.total) * 100);
                         loaderProgressText.textContent = `جاري معالجة الصفحة ${progressData.current} من ${progressData.total}`;
@@ -237,7 +158,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 body: formData
             });
             
-            clearInterval(progressInterval);
             clearInterval(pollInterval);
             loaderProgressContainer.style.display = "none";
             
@@ -253,15 +173,7 @@ document.addEventListener("DOMContentLoaded", () => {
             renderResults(currentHighlights);
             showToast(`تمت المعالجة بنجاح! تم استخراج ${currentHighlights.length} اقتباسات.`);
             
-            // Show warnings if any (like OCR space API keys failed fallback to local Tesseract)
-            if (data.warnings && data.warnings.length > 0) {
-                data.warnings.forEach(w => {
-                    showToast(w, "warning");
-                });
-            }
-            
         } catch (error) {
-            clearInterval(progressInterval);
             clearInterval(pollInterval);
             loaderProgressContainer.style.display = "none";
             showToast(error.message || "حدث خطأ غير متوقع أثناء المعالجة", "error");
@@ -301,10 +213,8 @@ document.addEventListener("DOMContentLoaded", () => {
             
             const highlightId = index + 1;
             
-            // Build visual crop preview HTML if image_path is available
             let cropHtml = "";
             if (item.image_path) {
-                // Flask static serve path
                 const imgSrc = `/${item.image_path}`;
                 cropHtml = `
                     <div class="crop-preview-container">
@@ -313,7 +223,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 `;
             }
 
-            // Build context section if available
             let contextHtml = "";
             if (item.context) {
                 contextHtml = `
@@ -346,7 +255,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
             `;
             
-            // Copy single card text handler
             const copyBtn = card.querySelector(".btn-card-copy");
             copyBtn.addEventListener("click", () => {
                 const textToCopy = item.text + (item.context ? `\n\nالسياق:\n${item.context}` : "");
