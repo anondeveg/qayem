@@ -6,7 +6,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from extractor import extract_highlights
 
-pdf_path = "/home/anondev/ai-lab/qayem/al-hayat_al-jensya_fi_mesr_al-qadima.pdf"
+pdf_path = "/home/anondev/ai-lab/qayem/test_highlight.pdf"
 
 print("Starting highlight extraction with PaddleOCR...")
 try:
@@ -14,7 +14,7 @@ try:
         pdf_path=pdf_path,
         ocr=True,
         ocr_engine="paddleocr",
-        lang="ara",
+        lang="eng",
         save_images=False,
         context=True,
         context_margin=80.0

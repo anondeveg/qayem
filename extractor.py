@@ -385,10 +385,15 @@ def extract_highlights(
                     # Expand the crop box to the full width of the page
                     page_rect = page.rect
                     ocr_rect = fitz.Rect(page_rect.x0, rect.y0, page_rect.x1, rect.y1)
-                    clean_img = crop_region(page, ocr_rect, zoom=4.0, include_annots=False)
                     
-                    # Preprocess image (scaling, contrast, binarization) for all OCR engines
-                    optimized_img = preprocess_image_for_ocr(clean_img)
+                    ocr_zoom = 1.5 if ocr_engine in ("paddleocr", "easyocr") else 4.0
+                    clean_img = crop_region(page, ocr_rect, zoom=ocr_zoom, include_annots=False)
+                    
+                    # Preprocess image for legacy OCR engines (like Tesseract), but pass raw color image for deep learning engines
+                    if ocr_engine in ("paddleocr", "easyocr"):
+                        optimized_img = clean_img
+                    else:
+                        optimized_img = preprocess_image_for_ocr(clean_img)
                     
                     current_engine = ocr_engine
                     ocr_text = ""
@@ -411,16 +416,7 @@ def extract_highlights(
                                 logger.warning(f"OCR.space failed with key {masked_key} (reason: {e}). Trying next key if available.")
                                 
                         if not ocr_success:
-                            if paddle_reader is not None:
-                                logger.error(f"[CRITICAL] All OCR.space tokens failed! Switching to local PaddleOCR.")
-                                if warnings is not None:
-                                    warnings.append(f"صفحة {page_num + 1}: فشلت جميع مفاتيح API لـ OCR.space! تم الانتقال إلى محرك PaddleOCR المحلي. (الخطأ الأخير: {last_error})")
-                                current_engine = "paddleocr"
-                            else:
-                                logger.error(f"[CRITICAL] All OCR.space tokens failed! Switching to local Tesseract.")
-                                if warnings is not None:
-                                    warnings.append(f"صفحة {page_num + 1}: فشلت جميع مفاتيح API لـ OCR.space! تم الانتقال إلى محرك Tesseract المحلي. (الخطأ الأخير: {last_error})")
-                                current_engine = "tesseract"
+                            raise RuntimeError("فشلت جميع مفاتيح API لـ OCR.space! يرجى اختيار محرك محلي مثل PaddleOCR أو Tesseract والبدء من جديد.")
                             
                     if current_engine == "easyocr" and easyocr_reader is not None:
                         img_np = np.array(optimized_img)
@@ -442,6 +438,8 @@ def extract_highlights(
                         extracted_text = ocr_text_raw.strip()
                     else:
                         extracted_text = ocr_text.strip()
+                except RuntimeError as e:
+                    raise
                 except Exception as e:
                     logger.error(f"OCR failed for page {page_num + 1}, highlight {highlight_id}: {e}")
                     extracted_text = "[OCR Failed]"
@@ -456,8 +454,13 @@ def extract_highlights(
                             page_rect.x1,
                             min(page_rect.y1, rect.y1 + context_margin)
                         )
-                        clean_c_img = crop_region(page, c_rect, zoom=4.0, include_annots=False)
-                        optimized_c_img = preprocess_image_for_ocr(clean_c_img)
+                        ocr_c_zoom = 1.5 if ocr_engine in ("paddleocr", "easyocr") else 4.0
+                        clean_c_img = crop_region(page, c_rect, zoom=ocr_c_zoom, include_annots=False)
+                        
+                        if ocr_engine in ("paddleocr", "easyocr"):
+                            optimized_c_img = clean_c_img
+                        else:
+                            optimized_c_img = preprocess_image_for_ocr(clean_c_img)
                         
                         current_c_engine = ocr_engine
                         ocr_c_text = ""
@@ -480,16 +483,7 @@ def extract_highlights(
                                     logger.warning(f"OCR.space context failed with key {masked_key} (reason: {e}). Trying next key if available.")
                                     
                             if not ocr_success:
-                                if paddle_reader is not None:
-                                    logger.error(f"[CRITICAL] All OCR.space tokens failed for context! Switching to local PaddleOCR.")
-                                    if warnings is not None:
-                                        warnings.append(f"صفحة {page_num + 1} (السياق): فشلت جميع مفاتيح API لـ OCR.space! تم الانتقال إلى محرك PaddleOCR المحلي. (الخطأ الأخير: {last_error})")
-                                    current_c_engine = "paddleocr"
-                                else:
-                                    logger.error(f"[CRITICAL] All OCR.space tokens failed for context! Switching to local Tesseract.")
-                                    if warnings is not None:
-                                        warnings.append(f"صفحة {page_num + 1} (السياق): فشلت جميع مفاتيح API لـ OCR.space! تم الانتقال إلى محرك Tesseract المحلي. (الخطأ الأخير: {last_error})")
-                                    current_c_engine = "tesseract"
+                                raise RuntimeError("فشلت جميع مفاتيح API لـ OCR.space! يرجى اختيار محرك محلي مثل PaddleOCR أو Tesseract والبدء من جديد.")
                                 
                         if current_c_engine == "easyocr" and easyocr_reader is not None:
                             img_np = np.array(optimized_c_img)
@@ -510,6 +504,8 @@ def extract_highlights(
                             context_text = ocr_text_raw.strip()
                         else:
                             context_text = ocr_c_text.strip()
+                    except RuntimeError as e:
+                        raise
                     except Exception as e:
                         logger.error(f"OCR context failed for page {page_num + 1}, highlight {highlight_id}: {e}")
                         context_text = "[OCR Context Failed]"

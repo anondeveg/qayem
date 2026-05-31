@@ -5,6 +5,10 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT=0
+ENV OMP_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
+ENV CPU_NUM=1
 
 # Set working directory
 WORKDIR /app
@@ -35,6 +39,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Pre-download and cache EasyOCR model weights (Arabic and English) inside the image
 # This avoids run-time downloads and allows completely offline container usage
 RUN python3 -c "import easyocr; easyocr.Reader(['ar', 'en'])"
+
+# Pre-download and cache PaddleOCR model weights (Arabic and English) inside the image
+RUN python3 -c "from paddleocr import PaddleOCR; PaddleOCR(use_textline_orientation=True, lang='ar'); PaddleOCR(use_textline_orientation=True, lang='en')"
 
 # Copy the rest of the application files
 COPY . /app/

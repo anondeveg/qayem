@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 url = "http://127.0.0.1:5000/api/extract"
-pdf_path = "/home/anondev/ai-lab/qayem/al-hayat_al-jensya_fi_mesr_al-qadima.pdf"
+pdf_path = "/home/anondev/ai-lab/qayem/test_highlight.pdf"
 
 if not Path(pdf_path).exists():
     print(f"Error: Test PDF not found at {pdf_path}")
@@ -15,7 +15,7 @@ files = {
 }
 data = {
     "ocr": "true",
-    "ocr_engine": "ocr_space",
+    "ocr_engine": "paddleocr",
     "ocr_space_engine": "3",
     "lang": "ara+eng",
     "context": "true",
