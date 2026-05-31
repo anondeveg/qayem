@@ -183,10 +183,16 @@ def extract():
         if pdf_path.exists():
             pdf_path.unlink()
             
+        compiled_pdf_path = None
+        compiled_pdf = HIGHLIGHTS_FOLDER / pdf_path.stem / "compiled_highlights.pdf"
+        if compiled_pdf.exists():
+            compiled_pdf_path = f"highlights/{pdf_path.stem}/compiled_highlights.pdf"
+            
         return jsonify({
             "success": True, 
             "highlights": highlights,
-            "warnings": warnings_list
+            "warnings": warnings_list,
+            "compiled_pdf_path": compiled_pdf_path
         })
         
     except Exception as e:

@@ -20,6 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const resultActions = document.getElementById("resultActions");
     const btnCopyToClipboard = document.getElementById("btnCopyToClipboard");
     const btnDownloadJson = document.getElementById("btnDownloadJson");
+    const btnDownloadPdf = document.getElementById("btnDownloadPdf");
     const btnSettings = document.getElementById("btnSettings");
     const settingsModal = document.getElementById("settingsModal");
     const btnCloseSettings = document.getElementById("btnCloseSettings");
@@ -29,6 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const toggleApiKey = document.getElementById("toggleApiKey");
 
     let currentHighlights = [];
+    let compiledPdfPath = null;
 
     // --- Toast Notification Helper ---
     function showToast(message, type = "success") {
@@ -181,6 +183,8 @@ document.addEventListener("DOMContentLoaded", () => {
         emptyState.style.display = "none";
         resultsList.style.display = "none";
         resultActions.style.display = "none";
+        btnDownloadPdf.style.display = "none";
+        compiledPdfPath = null;
         loader.style.display = "flex";
         btnSubmit.disabled = true;
         
@@ -244,6 +248,7 @@ document.addEventListener("DOMContentLoaded", () => {
             
             const data = await res.json();
             currentHighlights = data.highlights || [];
+            compiledPdfPath = data.compiled_pdf_path || null;
             
             renderResults(currentHighlights);
             showToast(`تمت المعالجة بنجاح! تم استخراج ${currentHighlights.length} اقتباسات.`);
@@ -284,6 +289,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         resultsList.style.display = "flex";
         resultActions.style.display = "flex";
+        if (compiledPdfPath) {
+            btnDownloadPdf.style.display = "inline-flex";
+        } else {
+            btnDownloadPdf.style.display = "none";
+        }
 
         highlights.forEach((item, index) => {
             const card = document.createElement("div");
@@ -378,5 +388,17 @@ document.addEventListener("DOMContentLoaded", () => {
         downloadAnchor.click();
         downloadAnchor.remove();
         showToast("جاري تحميل ملف JSON للنتائج");
+    });
+
+    btnDownloadPdf.addEventListener("click", () => {
+        if (!compiledPdfPath) return;
+        
+        const downloadAnchor = document.createElement("a");
+        downloadAnchor.setAttribute("href", `/${compiledPdfPath}`);
+        downloadAnchor.setAttribute("download", `${fileName.textContent.replace(".pdf", "")}_images.pdf`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+        showToast("جاري تحميل ملف PDF للصور");
     });
 });

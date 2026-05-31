@@ -415,6 +415,36 @@ def crop_region(page, rect: fitz.Rect, zoom: float = 4.0, include_annots: bool =
     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
     return img
 
+def compile_highlights_pdf(extracted_data, save_images, pdf_save_dir):
+    """Compile all highlight styled crop images into a single PDF document."""
+    if save_images and pdf_save_dir:
+        img_paths = []
+        for item in extracted_data:
+            if item.get("image_path"):
+                p = Path(item["image_path"])
+                if p.exists():
+                    img_paths.append(p)
+                    
+        if img_paths:
+            try:
+                images = []
+                for p in img_paths:
+                    try:
+                        im = Image.open(p).convert("RGB")
+                        images.append(im)
+                    except Exception as e:
+                        logger.error(f"Failed to open image for PDF compilation: {p}, error: {e}")
+                        
+                if images:
+                    pdf_output_path = pdf_save_dir / "compiled_highlights.pdf"
+                    images[0].save(pdf_output_path, save_all=True, append_images=images[1:])
+                    for im in images:
+                        im.close()
+                    logger.info(f"Compiled all {len(images)} images into a single PDF: {pdf_output_path}")
+            except Exception as e:
+                logger.error(f"Failed to compile highlight images to PDF: {e}")
+
+
 def extract_highlights(
     pdf_path: str,
     ocr: bool = False,
@@ -721,6 +751,7 @@ def extract_highlights(
     doc.close()
     
     if not ocr or not tasks:
+        compile_highlights_pdf(extracted_data, save_images, pdf_save_dir)
         return extracted_data
 
     # Helper function to save repeated updates
@@ -949,5 +980,7 @@ def extract_highlights(
                         except Exception as e:
                             pass
                     save_incremental()
+
+    compile_highlights_pdf(extracted_data, save_images, pdf_save_dir)
 
     return extracted_data
