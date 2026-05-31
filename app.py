@@ -51,6 +51,10 @@ def extract():
     # Get parameters
     task_id = request.form.get("task_id")
     context = request.form.get("context", "false").lower() == "true"
+    olmocr = request.form.get("olmocr", "false").lower() == "true"
+    olmocr_server = request.form.get("olmocr_server", "").strip() or None
+    olmocr_api_key = request.form.get("olmocr_api_key", "").strip() or None
+    olmocr_model = request.form.get("olmocr_model", "").strip() or None
     
     try:
         context_margin = float(request.form.get("context_margin", "80.0"))
@@ -74,7 +78,7 @@ def extract():
                 for k in oldest_keys:
                     PROGRESS_STORE.pop(k, None)
             PROGRESS_STORE[task_id] = {"current": 0, "total": 0}
-
+ 
     def progress_cb(current, total, phase="parsing", percent=None):
         if task_id:
             with PROGRESS_LOCK:
@@ -84,7 +88,7 @@ def extract():
                     "phase": phase,
                     "percent": percent
                 }
-
+ 
     output_json_path = HIGHLIGHTS_FOLDER / f"{pdf_path.stem}_highlights.json"
     
     try:
@@ -97,7 +101,11 @@ def extract():
             context=context,
             context_margin=context_margin,
             progress_callback=progress_cb,
-            output_json_path=str(output_json_path)
+            output_json_path=str(output_json_path),
+            olmocr=olmocr,
+            olmocr_server=olmocr_server,
+            olmocr_api_key=olmocr_api_key,
+            olmocr_model=olmocr_model
         )
         
         # Clean up the uploaded PDF file to conserve space

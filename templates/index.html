@@ -76,6 +76,46 @@
                         </div>
                     </div>
 
+                    <!-- olmOCR Settings -->
+                    <div class="card card-dark">
+                        <div class="toggle-group">
+                            <div class="toggle-header">
+                                <i class="fa-solid fa-wand-magic-sparkles toggle-icon"></i>
+                                <div class="toggle-title-desc">
+                                    <span class="toggle-title">تشغيل محرك التعرف الضوئي (olmOCR)</span>
+                                    <span class="toggle-desc">استخدام نموذج الرؤية الفائق لمعالجة وتحسين الاقتباسات</span>
+                                </div>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="olmocrToggle" name="olmocr">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+
+                        <!-- olmOCR Options Sub-panel -->
+                        <div id="olmocrOptions" class="sub-panel" style="display: none;">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label" for="olmocrServer">رابط خادم vLLM/OpenAI الخارجي</label>
+                                    <input type="url" id="olmocrServer" name="olmocr_server" class="form-input" placeholder="http://localhost:8000/v1">
+                                    <span class="input-hint">رابط الخادم الخارجي المتوافق مع OpenAI. اتركه فارغاً للتشغيل المحلي.</span>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label" for="olmocrApiKey">مفتاح API للاتصال بالخادم</label>
+                                    <input type="password" id="olmocrApiKey" name="olmocr_api_key" class="form-input" placeholder="اختياري">
+                                    <span class="input-hint">مفتاح API الخاص بالخادم الخارجي إن وجد.</span>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label" for="olmocrModel">اسم النموذج المستخدم</label>
+                                    <input type="text" id="olmocrModel" name="olmocr_model" class="form-input" value="allenai/olmOCR-7b-0225-preview">
+                                    <span class="input-hint">اسم النموذج الذي سيتم إرساله في طلبات API.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Submit Button -->
                     <button type="submit" id="btnSubmit" class="btn btn-primary btn-block">
                         <i class="fa-solid fa-play"></i>

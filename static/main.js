@@ -94,6 +94,12 @@ document.addEventListener("DOMContentLoaded", () => {
         contextOptions.style.display = e.target.checked ? "block" : "none";
     });
 
+    const olmocrToggle = document.getElementById("olmocrToggle");
+    const olmocrOptions = document.getElementById("olmocrOptions");
+    olmocrToggle.addEventListener("change", (e) => {
+        olmocrOptions.style.display = e.target.checked ? "block" : "none";
+    });
+
     // --- Submit Form and Extract Highlights ---
     extractForm.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -110,6 +116,10 @@ document.addEventListener("DOMContentLoaded", () => {
         formData.append("context", contextToggle.checked);
         formData.append("context_margin", document.getElementById("contextMargin").value);
         formData.append("merge_threshold", document.getElementById("mergeThreshold").value);
+        formData.append("olmocr", olmocrToggle.checked);
+        formData.append("olmocr_server", document.getElementById("olmocrServer").value);
+        formData.append("olmocr_api_key", document.getElementById("olmocrApiKey").value);
+        formData.append("olmocr_model", document.getElementById("olmocrModel").value);
 
         // Update UI states
         emptyState.style.display = "none";
@@ -137,14 +147,33 @@ document.addEventListener("DOMContentLoaded", () => {
                 const progressRes = await fetch(`/api/progress?task_id=${taskId}`);
                 if (progressRes.ok) {
                     const progressData = await progressRes.json();
-                    if (progressData.percent !== undefined) {
-                        const pct = progressData.percent;
-                        loaderProgressBar.style.width = `${pct}%`;
-                        loaderProgressText.textContent = `جاري قراءة صفحات الكتاب: ${progressData.current} من ${progressData.total} (${pct}%)`;
-                    } else if (progressData.total > 0) {
-                        const pct = Math.round((progressData.current / progressData.total) * 100);
-                        loaderProgressText.textContent = `جاري معالجة الصفحة ${progressData.current} من ${progressData.total}`;
-                        loaderProgressBar.style.width = `${pct}%`;
+                    const phase = progressData.phase || "parsing";
+                    
+                    if (phase === "ocr") {
+                        if (progressData.percent !== undefined) {
+                            const pct = progressData.percent;
+                            loaderProgressBar.style.width = `${pct}%`;
+                            loaderProgressText.textContent = `جاري تشغيل التعرف الضوئي (olmOCR): الصفحة ${progressData.current} من ${progressData.total} (${pct}%)`;
+                        } else if (progressData.total > 0) {
+                            const pct = Math.round((progressData.current / progressData.total) * 100);
+                            loaderProgressText.textContent = `جاري تشغيل التعرف الضوئي (olmOCR): الصفحة ${progressData.current} من ${progressData.total}`;
+                            loaderProgressBar.style.width = `${pct}%`;
+                        } else {
+                            loaderProgressText.textContent = `جاري تشغيل محرك التعرف الضوئي (olmOCR)...`;
+                            loaderProgressBar.style.width = `50%`;
+                        }
+                        loaderText.textContent = "جاري التعرف على النصوص باستخدام Vision-Language Model...";
+                    } else {
+                        if (progressData.percent !== undefined) {
+                            const pct = progressData.percent;
+                            loaderProgressBar.style.width = `${pct}%`;
+                            loaderProgressText.textContent = `جاري قراءة صفحات الكتاب: ${progressData.current} من ${progressData.total} (${pct}%)`;
+                        } else if (progressData.total > 0) {
+                            const pct = Math.round((progressData.current / progressData.total) * 100);
+                            loaderProgressText.textContent = `جاري معالجة الصفحة ${progressData.current} من ${progressData.total}`;
+                            loaderProgressBar.style.width = `${pct}%`;
+                        }
+                        loaderText.textContent = "جاري تحميل وقراءة مستند PDF...";
                     }
                 }
             } catch (err) {
