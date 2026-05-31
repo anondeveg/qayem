@@ -344,7 +344,10 @@ def extract_highlights(
     for page_num in range(total_pages):
         if progress_callback:
             try:
-                progress_callback(page_num + 1, total_pages)
+                if ocr:
+                    progress_callback(page_num + 1, total_pages * 2)
+                else:
+                    progress_callback(page_num + 1, total_pages)
             except Exception as e:
                 logger.warning(f"Progress callback failed: {e}")
                 
@@ -508,25 +511,40 @@ def extract_highlights(
                 image_mapping.append((idx, "context"))
                 
         if images_to_ocr:
-            logger.info(f"Performing batch PaddleOCR on {len(images_to_ocr)} images...")
-            try:
-                ocr_results = paddle_reader.ocr(images_to_ocr)
-            except Exception as e:
-                logger.error(f"Batch PaddleOCR failed: {e}")
-                raise RuntimeError(f"فشلت عملية التعرف الضوئي PaddleOCR: {str(e)}")
+            batch_size = 4
+            logger.info(f"Performing batch PaddleOCR on {len(images_to_ocr)} images in chunks of {batch_size}...")
+            total_ocr = len(images_to_ocr)
+            completed_ocr = 0
+            
+            for i in range(0, total_ocr, batch_size):
+                chunk = images_to_ocr[i:i + batch_size]
+                chunk_mapping = image_mapping[i:i + batch_size]
                 
-            for res_idx, ocr_res in enumerate(ocr_results):
-                task_idx, res_type = image_mapping[res_idx]
-                if ocr_res:
-                    text_out = sort_paddleocr_results(ocr_res)
-                else:
-                    text_out = ""
+                try:
+                    ocr_results = paddle_reader.ocr(chunk)
+                except Exception as e:
+                    logger.error(f"Batch PaddleOCR failed: {e}")
+                    raise RuntimeError(f"فشلت عملية التعرف الضوئي PaddleOCR: {str(e)}")
                     
-                if res_type == "text":
-                    extracted_data[task_idx]["text"] = text_out
-                else:
-                    extracted_data[task_idx]["context"] = text_out
-                
+                for res_idx, ocr_res in enumerate(ocr_results):
+                    task_idx, res_type = chunk_mapping[res_idx]
+                    if ocr_res:
+                        text_out = sort_paddleocr_results(ocr_res)
+                    else:
+                        text_out = ""
+                        
+                    if res_type == "text":
+                        extracted_data[task_idx]["text"] = text_out
+                    else:
+                        extracted_data[task_idx]["context"] = text_out
+                        
+                completed_ocr += len(chunk)
+                if progress_callback:
+                    try:
+                        ocr_prog = total_pages + int((completed_ocr / total_ocr) * total_pages)
+                        progress_callback(ocr_prog, total_pages * 2)
+                    except Exception as e:
+                        pass
                 save_incremental()
 
     else:
@@ -583,6 +601,9 @@ def extract_highlights(
                     return t_idx, t_type, "", e
 
             logger.info(f"Running parallel OCR using ThreadPoolExecutor with {max_workers} workers...")
+            total_ocr = len(ocr_tasks)
+            completed_ocr = 0
+            
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [executor.submit(process_single_task, t_info) for t_info in ocr_tasks]
                 for future in as_completed(futures):
@@ -593,6 +614,14 @@ def extract_highlights(
                         extracted_data[t_idx]["text"] = text
                     else:
                         extracted_data[t_idx]["context"] = text
+                        
+                    completed_ocr += 1
+                    if progress_callback:
+                        try:
+                            ocr_prog = total_pages + int((completed_ocr / total_ocr) * total_pages)
+                            progress_callback(ocr_prog, total_pages * 2)
+                        except Exception as e:
+                            pass
                     save_incremental()
 
     return extracted_data
