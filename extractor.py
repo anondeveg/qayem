@@ -7,6 +7,7 @@ import io
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 load_dotenv()
 import fitz  # PyMuPDF
@@ -300,6 +301,7 @@ def extract_highlights(
     pdf_save_dir = None
     if save_images:
         pdf_save_dir = Path(save_dir) / pdf_path.stem
+        
     # Initialize EasyOCR if chosen
     easyocr_reader = None
     if ocr and ocr_engine == "easyocr":
@@ -335,11 +337,14 @@ def extract_highlights(
 
     import json
     extracted_data = []
+    tasks = []
+    total_pages = len(doc)
     
-    for page_num in range(len(doc)):
+    # Step 1: Collect highlight regions & crop images (and perform native text extraction if ocr is False)
+    for page_num in range(total_pages):
         if progress_callback:
             try:
-                progress_callback(page_num + 1, len(doc))
+                progress_callback(page_num + 1, total_pages)
             except Exception as e:
                 logger.warning(f"Progress callback failed: {e}")
                 
@@ -361,6 +366,9 @@ def extract_highlights(
         merged_rects = merge_rects(rects, threshold=merge_threshold)
         logger.info(f"Page {page_num + 1}: Found {len(rects)} highlights, merged into {len(merged_rects)} blocks")
         
+        if save_images and pdf_save_dir:
+            pdf_save_dir.mkdir(parents=True, exist_ok=True)
+            
         for idx, rect in enumerate(merged_rects):
             highlight_id = idx + 1
             image_path = None
@@ -376,142 +384,42 @@ def extract_highlights(
                 except Exception as e:
                     logger.error(f"Error saving image for page {page_num + 1}, highlight {highlight_id}: {e}")
             
-            # Extract text
-            extracted_text = ""
-            current_engine = "native"
             if ocr:
-                try:
-                    # For OCR, render a clean image without annotations for maximum accuracy
-                    # Expand the crop box to the full width of the page
-                    page_rect = page.rect
-                    ocr_rect = fitz.Rect(page_rect.x0, rect.y0, page_rect.x1, rect.y1)
-                    
-                    ocr_zoom = 1.5 if ocr_engine in ("paddleocr", "easyocr") else 4.0
-                    clean_img = crop_region(page, ocr_rect, zoom=ocr_zoom, include_annots=False)
-                    
-                    # Preprocess image for legacy OCR engines (like Tesseract), but pass raw color image for deep learning engines
-                    if ocr_engine in ("paddleocr", "easyocr"):
-                        optimized_img = clean_img
-                    else:
-                        optimized_img = preprocess_image_for_ocr(clean_img)
-                    
-                    current_engine = ocr_engine
-                    ocr_text = ""
-                    
-                    if current_engine == "ocr_space":
-                        api_keys = [k.strip() for k in ocr_space_key.split(",") if k.strip()]
-                        if not api_keys:
-                            api_keys = ["K89878519788957"]
-                            
-                        ocr_success = False
-                        last_error = ""
-                        for api_k in api_keys:
-                            try:
-                                ocr_text = ocr_space_extract(optimized_img, lang=lang, api_key=api_k, ocr_space_engine=ocr_space_engine)
-                                ocr_success = True
-                                break
-                            except Exception as e:
-                                last_error = str(e)
-                                masked_key = api_k[:4] + "..." + api_k[-4:] if len(api_k) > 8 else "..."
-                                logger.warning(f"OCR.space failed with key {masked_key} (reason: {e}). Trying next key if available.")
-                                
-                        if not ocr_success:
-                            raise RuntimeError("فشلت جميع مفاتيح API لـ OCR.space! يرجى اختيار محرك محلي مثل PaddleOCR أو Tesseract والبدء من جديد.")
-                            
-                    if current_engine == "easyocr" and easyocr_reader is not None:
-                        img_np = np.array(optimized_img)
-                        ocr_results = easyocr_reader.readtext(img_np)
-                        extracted_text = sort_easyocr_results(ocr_results)
-                    elif current_engine == "paddleocr" and paddle_reader is not None:
-                        img_np = np.array(optimized_img.convert('RGB'))
-                        ocr_results = paddle_reader.ocr(img_np)
-                        if ocr_results and ocr_results[0]:
-                            extracted_text = sort_paddleocr_results(ocr_results[0])
-                        else:
-                            extracted_text = ""
-                    elif current_engine == "tesseract":
-                        config = "--psm 6"
-                        if tessdata_dir:
-                            config = f'--tessdata-dir "{tessdata_dir}" --psm 6'
-                        # Run OCR
-                        ocr_text_raw = pytesseract.image_to_string(optimized_img, lang=lang, config=config)
-                        extracted_text = ocr_text_raw.strip()
-                    else:
-                        extracted_text = ocr_text.strip()
-                except RuntimeError as e:
-                    raise
-                except Exception as e:
-                    logger.error(f"OCR failed for page {page_num + 1}, highlight {highlight_id}: {e}")
-                    extracted_text = "[OCR Failed]"
+                page_rect = page.rect
+                ocr_rect = fitz.Rect(page_rect.x0, rect.y0, page_rect.x1, rect.y1)
                 
-                # Extract surrounding context if requested
-                context_text = None
+                ocr_zoom = 1.5 if ocr_engine in ("paddleocr", "easyocr") else 4.0
+                clean_img = crop_region(page, ocr_rect, zoom=ocr_zoom, include_annots=False)
+                
+                # Preprocess image for legacy OCR engines (like Tesseract), but pass raw color image for deep learning engines
+                if ocr_engine not in ("paddleocr", "easyocr"):
+                    clean_img = preprocess_image_for_ocr(clean_img)
+                
+                clean_c_img = None
                 if context:
-                    try:
-                        c_rect = fitz.Rect(
-                            page_rect.x0,
-                            max(page_rect.y0, rect.y0 - context_margin),
-                            page_rect.x1,
-                            min(page_rect.y1, rect.y1 + context_margin)
-                        )
-                        ocr_c_zoom = 1.5 if ocr_engine in ("paddleocr", "easyocr") else 4.0
-                        clean_c_img = crop_region(page, c_rect, zoom=ocr_c_zoom, include_annots=False)
+                    c_rect = fitz.Rect(
+                        page_rect.x0,
+                        max(page_rect.y0, rect.y0 - context_margin),
+                        page_rect.x1,
+                        min(page_rect.y1, rect.y1 + context_margin)
+                    )
+                    ocr_c_zoom = 1.5 if ocr_engine in ("paddleocr", "easyocr") else 4.0
+                    clean_c_img = crop_region(page, c_rect, zoom=ocr_c_zoom, include_annots=False)
+                    if ocr_engine not in ("paddleocr", "easyocr"):
+                        clean_c_img = preprocess_image_for_ocr(clean_c_img)
                         
-                        if ocr_engine in ("paddleocr", "easyocr"):
-                            optimized_c_img = clean_c_img
-                        else:
-                            optimized_c_img = preprocess_image_for_ocr(clean_c_img)
-                        
-                        current_c_engine = ocr_engine
-                        ocr_c_text = ""
-                        
-                        if current_c_engine == "ocr_space":
-                            api_keys = [k.strip() for k in ocr_space_key.split(",") if k.strip()]
-                            if not api_keys:
-                                api_keys = ["K89878519788957"]
-                                
-                            ocr_success = False
-                            last_error = ""
-                            for api_k in api_keys:
-                                try:
-                                    ocr_c_text = ocr_space_extract(optimized_c_img, lang=lang, api_key=api_k, ocr_space_engine=ocr_space_engine)
-                                    ocr_success = True
-                                    break
-                                except Exception as e:
-                                    last_error = str(e)
-                                    masked_key = api_k[:4] + "..." + api_k[-4:] if len(api_k) > 8 else "..."
-                                    logger.warning(f"OCR.space context failed with key {masked_key} (reason: {e}). Trying next key if available.")
-                                    
-                            if not ocr_success:
-                                raise RuntimeError("فشلت جميع مفاتيح API لـ OCR.space! يرجى اختيار محرك محلي مثل PaddleOCR أو Tesseract والبدء من جديد.")
-                                
-                        if current_c_engine == "easyocr" and easyocr_reader is not None:
-                            img_np = np.array(optimized_c_img)
-                            ocr_results = easyocr_reader.readtext(img_np)
-                            context_text = sort_easyocr_results(ocr_results)
-                        elif current_c_engine == "paddleocr" and paddle_reader is not None:
-                            img_np = np.array(optimized_c_img.convert('RGB'))
-                            ocr_results = paddle_reader.ocr(img_np)
-                            if ocr_results and ocr_results[0]:
-                                context_text = sort_paddleocr_results(ocr_results[0])
-                            else:
-                                context_text = ""
-                        elif current_c_engine == "tesseract":
-                            config = "--psm 6"
-                            if tessdata_dir:
-                                config = f'--tessdata-dir "{tessdata_dir}" --psm 6'
-                            ocr_text_raw = pytesseract.image_to_string(optimized_c_img, lang=lang, config=config)
-                            context_text = ocr_text_raw.strip()
-                        else:
-                            context_text = ocr_c_text.strip()
-                    except RuntimeError as e:
-                        raise
-                    except Exception as e:
-                        logger.error(f"OCR context failed for page {page_num + 1}, highlight {highlight_id}: {e}")
-                        context_text = "[OCR Context Failed]"
+                tasks.append({
+                    "page_num": page_num + 1,
+                    "rect": rect,
+                    "highlight_id": highlight_id,
+                    "image_path": image_path,
+                    "clean_img": clean_img,
+                    "clean_c_img": clean_c_img
+                })
             else:
+                # Native text extraction
+                extracted_text = ""
                 try:
-                    # Native text extraction from PDF
                     native_text = page.get_text("text", clip=rect)
                     extracted_text = native_text.strip()
                     if not extracted_text:
@@ -537,26 +445,154 @@ def extract_highlights(
                     except Exception as e:
                         logger.error(f"Native context failed for page {page_num + 1}: {e}")
                         context_text = "[Context Extraction Failed]"
-            
-            result_item = {
-                "page": page_num + 1,
-                "rect": [rect.x0, rect.y0, rect.x1, rect.y1],
-                "image_path": image_path,
-                "text": extracted_text,
-                "ocr_engine": current_engine
-            }
-            if context:
-                result_item["context"] = context_text
                 
-            extracted_data.append(result_item)
-            
-            # Save repeatedly to disk after each processed highlight block
-            if output_json_path:
-                try:
-                    with open(output_json_path, "w", encoding="utf-8") as f:
-                        json.dump(extracted_data, f, ensure_ascii=False, indent=2)
-                except Exception as e:
-                    logger.error(f"Failed to save repeated JSON update: {e}")
-            
+                result_item = {
+                    "page": page_num + 1,
+                    "rect": [rect.x0, rect.y0, rect.x1, rect.y1],
+                    "image_path": image_path,
+                    "text": extracted_text,
+                    "ocr_engine": "native"
+                }
+                if context:
+                    result_item["context"] = context_text
+                extracted_data.append(result_item)
+                
+                # Save repeatedly to disk after each processed native highlight block
+                if output_json_path:
+                    try:
+                        with open(output_json_path, "w", encoding="utf-8") as f:
+                            json.dump(extracted_data, f, ensure_ascii=False, indent=2)
+                    except Exception as e:
+                        logger.error(f"Failed to save repeated JSON update: {e}")
+                        
     doc.close()
+    
+    if not ocr:
+        return extracted_data
+
+    # Step 2: Pre-populate extracted_data with task placeholders
+    extracted_data = [None] * len(tasks)
+    for i, t in enumerate(tasks):
+        r = t["rect"]
+        item = {
+            "page": t["page_num"],
+            "rect": [r.x0, r.y0, r.x1, r.y1],
+            "image_path": t["image_path"],
+            "text": "",
+            "ocr_engine": ocr_engine
+        }
+        if context:
+            item["context"] = ""
+        extracted_data[i] = item
+
+    # Helper function to save repeated updates
+    def save_incremental():
+        if output_json_path:
+            try:
+                with open(output_json_path, "w", encoding="utf-8") as f:
+                    json.dump(extracted_data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.error(f"Failed to save repeated JSON update: {e}")
+
+    # Step 3: Run OCR (Batch PaddleOCR vs ThreadPoolExecutor for others)
+    if ocr_engine == "paddleocr" and paddle_reader is not None:
+        images_to_ocr = []
+        image_mapping = []  # stores (task_idx, type)
+        
+        for idx, t in enumerate(tasks):
+            if t["clean_img"]:
+                images_to_ocr.append(np.array(t["clean_img"].convert('RGB')))
+                image_mapping.append((idx, "text"))
+            if t["clean_c_img"]:
+                images_to_ocr.append(np.array(t["clean_c_img"].convert('RGB')))
+                image_mapping.append((idx, "context"))
+                
+        if images_to_ocr:
+            logger.info(f"Performing batch PaddleOCR on {len(images_to_ocr)} images...")
+            try:
+                ocr_results = paddle_reader.ocr(images_to_ocr)
+            except Exception as e:
+                logger.error(f"Batch PaddleOCR failed: {e}")
+                raise RuntimeError(f"فشلت عملية التعرف الضوئي PaddleOCR: {str(e)}")
+                
+            for res_idx, ocr_res in enumerate(ocr_results):
+                task_idx, res_type = image_mapping[res_idx]
+                if ocr_res:
+                    text_out = sort_paddleocr_results(ocr_res)
+                else:
+                    text_out = ""
+                    
+                if res_type == "text":
+                    extracted_data[task_idx]["text"] = text_out
+                else:
+                    extracted_data[task_idx]["context"] = text_out
+                
+                save_incremental()
+
+    else:
+        # EasyOCR, Tesseract, OCR.space
+        ocr_tasks = []
+        for idx, t in enumerate(tasks):
+            if t["clean_img"]:
+                ocr_tasks.append({"task_idx": idx, "img": t["clean_img"], "type": "text"})
+            if t["clean_c_img"]:
+                ocr_tasks.append({"task_idx": idx, "img": t["clean_c_img"], "type": "context"})
+                
+        if ocr_tasks:
+            # Set thread workers count
+            max_workers = 4
+            if ocr_engine == "ocr_space":
+                max_workers = 8
+            elif ocr_engine == "tesseract":
+                max_workers = min(6, os.cpu_count() or 4)
+                
+            def process_single_task(t_info):
+                t_idx = t_info["task_idx"]
+                img = t_info["img"]
+                t_type = t_info["type"]
+                
+                try:
+                    if ocr_engine == "tesseract":
+                        config = "--psm 6"
+                        if tessdata_dir:
+                            config = f'--tessdata-dir "{tessdata_dir}" --psm 6'
+                        text = pytesseract.image_to_string(img, lang=lang, config=config).strip()
+                    elif ocr_engine == "ocr_space":
+                        api_keys = [k.strip() for k in ocr_space_key.split(",") if k.strip()]
+                        if not api_keys:
+                            api_keys = ["K89878519788957"]
+                        ocr_success = False
+                        last_error = ""
+                        for api_k in api_keys:
+                            try:
+                                text = ocr_space_extract(img, lang=lang, api_key=api_k, ocr_space_engine=ocr_space_engine)
+                                ocr_success = True
+                                break
+                            except Exception as e:
+                                last_error = str(e)
+                        if not ocr_success:
+                            raise RuntimeError("فشلت جميع مفاتيح API لـ OCR.space! يرجى اختيار محرك محلي مثل PaddleOCR أو Tesseract والبدء من جديد.")
+                    elif ocr_engine == "easyocr" and easyocr_reader is not None:
+                        img_np = np.array(img)
+                        ocr_res = easyocr_reader.readtext(img_np)
+                        text = sort_easyocr_results(ocr_res)
+                    else:
+                        text = ""
+                    return t_idx, t_type, text, None
+                except Exception as e:
+                    return t_idx, t_type, "", e
+
+            logger.info(f"Running parallel OCR using ThreadPoolExecutor with {max_workers} workers...")
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(process_single_task, t_info) for t_info in ocr_tasks]
+                for future in as_completed(futures):
+                    t_idx, t_type, text, err = future.result()
+                    if err:
+                        raise err
+                    if t_type == "text":
+                        extracted_data[t_idx]["text"] = text
+                    else:
+                        extracted_data[t_idx]["context"] = text
+                    save_incremental()
+
     return extracted_data
