@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 # Ensure dotenv is loaded
 load_dotenv()
 
-from extractor import extract_highlights
+from extractor import extract_highlights, ocr_full_pdf
 
 # Global thread-safe progress store for active tasks
 PROGRESS_STORE = {}
@@ -51,10 +51,21 @@ def extract():
     # Get parameters
     task_id = request.form.get("task_id")
     context = request.form.get("context", "false").lower() == "true"
-    olmocr = request.form.get("olmocr", "false").lower() == "true"
-    olmocr_server = request.form.get("olmocr_server", "").strip() or None
+    full_ocr = request.form.get("full_ocr", "false").lower() == "true"
+    
+    # Parse OCR Engine
+    ocr_engine = request.form.get("ocr_engine", "auto").lower().strip()
+    if "ocr_engine" not in request.form and request.form.get("olmocr", "true").lower() == "false":
+        ocr_engine = "native"
+
+    olmocr_server = request.form.get("olmocr_server", "").strip() or "http://localhost:11434/v1"
     olmocr_api_key = request.form.get("olmocr_api_key", "").strip() or None
-    olmocr_model = request.form.get("olmocr_model", "").strip() or None
+    olmocr_model = request.form.get("olmocr_model", "").strip() or "richardyoung/olmocr2:7b-q8"
+    mistral_api_key = request.form.get("mistral_api_key", "").strip() or None
+    
+    # Validate Mistral API key if mistralocr engine is selected
+    if ocr_engine == "mistralocr" and not mistral_api_key:
+        return jsonify({"error": "Mistral AI OCR requires an API key. Please enter your Mistral API key."}), 400
     
     try:
         context_margin = float(request.form.get("context_margin", "80.0"))
@@ -93,21 +104,43 @@ def extract():
     
     try:
         # Perform extraction
-        highlights = extract_highlights(
-            pdf_path=str(pdf_path),
-            merge_threshold=merge_threshold,
-            save_images=True,
-            save_dir=str(HIGHLIGHTS_FOLDER),
-            context=context,
-            context_margin=context_margin,
-            progress_callback=progress_cb,
-            output_json_path=str(output_json_path),
-            olmocr=olmocr,
-            olmocr_server=olmocr_server,
-            olmocr_api_key=olmocr_api_key,
-            olmocr_model=olmocr_model
-        )
+        highlights = []
+        if not full_ocr:
+            highlights = extract_highlights(
+                pdf_path=str(pdf_path),
+                merge_threshold=merge_threshold,
+                save_images=True,
+                save_dir=str(HIGHLIGHTS_FOLDER),
+                context=context,
+                context_margin=context_margin,
+                progress_callback=progress_cb,
+                output_json_path=str(output_json_path),
+                olmocr=None,
+                olmocr_server=olmocr_server,
+                olmocr_api_key=olmocr_api_key,
+                olmocr_model=olmocr_model,
+                ocr_engine=ocr_engine,
+                mistral_api_key=mistral_api_key
+            )
         
+        # Run full OCR if requested, before deleting the uploaded PDF
+        full_ocr_txt_path = None
+        if full_ocr:
+            full_ocr_text = ocr_full_pdf(
+                pdf_path=str(pdf_path),
+                ocr_engine=ocr_engine,
+                olmocr_server=olmocr_server,
+                olmocr_api_key=olmocr_api_key,
+                olmocr_model=olmocr_model,
+                mistral_api_key=mistral_api_key,
+                progress_callback=progress_cb
+            )
+            # Save collated text file
+            full_ocr_file = HIGHLIGHTS_FOLDER / f"{pdf_path.stem}_full_ocr.txt"
+            with open(full_ocr_file, "w", encoding="utf-8") as f:
+                f.write(full_ocr_text)
+            full_ocr_txt_path = f"highlights/{pdf_path.stem}_full_ocr.txt"
+
         # Clean up the uploaded PDF file to conserve space
         if pdf_path.exists():
             pdf_path.unlink()
@@ -120,7 +153,8 @@ def extract():
         return jsonify({
             "success": True, 
             "highlights": highlights,
-            "compiled_pdf_path": compiled_pdf_path
+            "compiled_pdf_path": compiled_pdf_path,
+            "full_ocr_txt_path": full_ocr_txt_path
         })
         
     except Exception as e:

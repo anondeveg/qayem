@@ -54,13 +54,25 @@ def main():
     parser.add_argument(
         "--olmocr",
         action="store_true",
-        help="Enable olmOCR Vision-Language Model OCR on compiled highlights PDF.",
+        default=True,
+        help="Enable olmOCR Vision-Language Model OCR on compiled highlights PDF (enabled by default).",
+    )
+    parser.add_argument(
+        "--no-olmocr",
+        action="store_false",
+        dest="olmocr",
+        help="Disable olmOCR Vision-Language Model OCR on compiled highlights PDF.",
+    )
+    parser.add_argument(
+        "--ocr-engine",
+        choices=["auto", "olmocr", "easyocr", "native"],
+        default="auto",
+        help="OCR engine to use (default: auto).",
     )
     parser.add_argument(
         "--olmocr-server",
-        default=None,
-        help="URL of OpenAI-compatible server for olmOCR (e.g. http://localhost:8000/v1). "
-             "If omitted, olmocr will attempt to launch a local vLLM instance (requires vllm + GPU).",
+        default="http://localhost:11434/v1",
+        help="URL of OpenAI-compatible server for olmOCR (default: http://localhost:11434/v1).",
     )
     parser.add_argument(
         "--olmocr-api-key",
@@ -69,8 +81,8 @@ def main():
     )
     parser.add_argument(
         "--olmocr-model",
-        default="allenai/olmOCR-7b-0225-preview",
-        help="Model name to use for olmOCR (default: allenai/olmOCR-7b-0225-preview).",
+        default="richardyoung/olmocr2:7b-q8",
+        help="Model name to use for olmOCR (default: richardyoung/olmocr2:7b-q8).",
     )
 
     args = parser.parse_args()
@@ -89,17 +101,44 @@ def main():
         ).strip().lower()
         args.context = context_input not in ("n", "no")
 
-        olmocr_input = input(
-            "Enable olmOCR (Vision-Language Model OCR)? [y/N]: "
-        ).strip().lower()
-        args.olmocr = olmocr_input in ("y", "yes")
+        # Backwards compatibility check
+        if not args.olmocr:
+            if args.ocr_engine == "auto":
+                args.ocr_engine = "native"
 
-        if args.olmocr:
+        print("Select OCR Engine:")
+        print("  1. Auto (Native for English, EasyOCR fallback for Arabic/scanned) [Default]")
+        print("  2. olmOCR (Vision-Language Model OCR — slow but smart)")
+        print("  3. EasyOCR (Fast local OCR for Arabic/English)")
+        print("  4. Native (No OCR, selectable text only)")
+        engine_choice = input("Enter choice [1-4, default: 1]: ").strip()
+        
+        if engine_choice == "2":
+            args.ocr_engine = "olmocr"
+        elif engine_choice == "3":
+            args.ocr_engine = "easyocr"
+        elif engine_choice == "4":
+            args.ocr_engine = "native"
+        else:
+            args.ocr_engine = "auto"
+
+        if args.ocr_engine == "olmocr":
             server_input = input(
-                "olmOCR server URL (e.g. http://localhost:8000/v1) [leave blank for local vLLM]: "
+                "olmOCR server URL (e.g. http://localhost:11434/v1) [leave blank for local Ollama]: "
             ).strip()
             if server_input:
                 args.olmocr_server = server_input
+            else:
+                args.olmocr_server = "http://localhost:11434/v1"
+
+            model_input = input(
+                "olmOCR Model name [leave blank for richardyoung/olmocr2:7b-q8]: "
+            ).strip()
+            if model_input:
+                args.olmocr_model = model_input
+            else:
+                args.olmocr_model = "richardyoung/olmocr2:7b-q8"
+
             key_input = input("olmOCR API key [optional, press Enter to skip]: ").strip()
             if key_input:
                 args.olmocr_api_key = key_input
@@ -120,12 +159,17 @@ def main():
     if args.output is None:
         args.output = f"{pdf_file.stem}_highlights.json"
 
+    # For backward compatibility check when arguments are passed via CLI
+    if not args.olmocr:
+        if args.ocr_engine == "auto":
+            args.ocr_engine = "native"
+
     # Run extraction
     print(f"\nProcessing '{pdf_file.name}'...")
     print(f"Context Extraction: {args.context}")
-    print(f"olmOCR Enabled: {args.olmocr}")
-    if args.olmocr:
-        server_display = args.olmocr_server or "(local vLLM)"
+    print(f"OCR Engine: {args.ocr_engine.upper()}")
+    if args.ocr_engine == "olmocr":
+        server_display = args.olmocr_server or "(local Ollama)"
         print(f"  olmOCR Server: {server_display}")
         print(f"  olmOCR Model: {args.olmocr_model}")
     print(f"Save Cropped Images: {not args.no_images}")
@@ -147,10 +191,11 @@ def main():
             context_margin=args.context_margin,
             progress_callback=progress_cb,
             output_json_path=args.output,
-            olmocr=args.olmocr,
+            olmocr=None,
             olmocr_server=args.olmocr_server,
             olmocr_api_key=args.olmocr_api_key,
             olmocr_model=args.olmocr_model,
+            ocr_engine=args.ocr_engine,
         )
     except Exception as e:
         print(f"\nExtraction failed: {e}")

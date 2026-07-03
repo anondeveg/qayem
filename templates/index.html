@@ -76,41 +76,67 @@
                         </div>
                     </div>
 
-                    <!-- olmOCR Settings -->
+                    <!-- Full Book OCR Toggle -->
                     <div class="card card-dark">
                         <div class="toggle-group">
                             <div class="toggle-header">
-                                <i class="fa-solid fa-wand-magic-sparkles toggle-icon"></i>
+                                <i class="fa-solid fa-file-lines toggle-icon"></i>
                                 <div class="toggle-title-desc">
-                                    <span class="toggle-title">تشغيل محرك التعرف الضوئي (olmOCR)</span>
-                                    <span class="toggle-desc">استخدام نموذج الرؤية الفائق لمعالجة وتحسين الاقتباسات</span>
+                                    <span class="toggle-title">استخراج النص الكامل للكتاب (OCR)</span>
+                                    <span class="toggle-desc">يقوم بتشغيل OCR على جميع صفحات الكتاب وحفظها كملف نصي (.txt)</span>
                                 </div>
                             </div>
                             <label class="switch">
-                                <input type="checkbox" id="olmocrToggle" name="olmocr">
+                                <input type="checkbox" id="fullOcrToggle" name="full_ocr">
                                 <span class="slider round"></span>
                             </label>
+                        </div>
+                    </div>
+
+                    <!-- OCR Engine Settings -->
+                    <div class="card card-dark">
+                        <div class="form-group">
+                            <label class="form-label" for="ocrEngine">محرك التعرف الضوئي (OCR) واللغة</label>
+                            <select id="ocrEngine" name="ocr_engine" class="form-select">
+                                <option value="auto" selected>تلقائي (ذكي - يستخرج الإنجليزية والمسح الضوئي العربي تلقائياً)</option>
+                                <option value="easyocr">EasyOCR (محلي سريع - يدعم العربية والإنجليزية معاً)</option>
+                                <option value="olmocr">olmOCR (نموذج رؤية فائق - يتطلب تشغيل Ollama محلياً)</option>
+                                <option value="mistralocr">Mistral AI OCR (سحابي سريع - يتطلب مفتاح API)</option>
+                                <option value="native">بدون OCR (مستخرج PDF الافتراضي - سريع جداً للنصوص الرقمية الإنجليزية)</option>
+                            </select>
+                            <span class="input-hint">يقوم خيار "تلقائي" بالتعرف على اللغة المناسبة لكل اقتباس وتشغيل OCR فقط عند الحاجة لتوفير الوقت والجهد.</span>
                         </div>
 
                         <!-- olmOCR Options Sub-panel -->
                         <div id="olmocrOptions" class="sub-panel" style="display: none;">
                             <div class="form-grid">
                                 <div class="form-group">
-                                    <label class="form-label" for="olmocrServer">رابط خادم vLLM/OpenAI الخارجي</label>
-                                    <input type="url" id="olmocrServer" name="olmocr_server" class="form-input" placeholder="http://localhost:8000/v1">
-                                    <span class="input-hint">رابط خادم vLLM أو OpenAI المتوافق. إذا تُرك فارغاً، سيحاول olmOCR تشغيل نموذج محلي (يتطلب GPU وتثبيت vllm).</span>
+                                    <label class="form-label" for="olmocrServer">رابط خادم vLLM/Ollama/OpenAI الخارجي</label>
+                                    <input type="url" id="olmocrServer" name="olmocr_server" class="form-input" placeholder="http://localhost:11434/v1" value="http://localhost:11434/v1">
+                                    <span class="input-hint">رابط خادم vLLM أو Ollama أو OpenAI المتوافق. القيمة الافتراضية هي خادم Ollama المحلي.</span>
                                 </div>
 
                                 <div class="form-group">
                                     <label class="form-label" for="olmocrApiKey">مفتاح API للاتصال بالخادم</label>
                                     <input type="password" id="olmocrApiKey" name="olmocr_api_key" class="form-input" placeholder="اختياري">
-                                    <span class="input-hint">مفتاح API الخاص بالخادم الخارجي إن وجد.</span>
+                                    <span class="input-hint">مفتاح API الخاص بالخادم الخارجي إن وجد (غير مطلوب لـ Ollama المحلي).</span>
                                 </div>
 
                                 <div class="form-group">
                                     <label class="form-label" for="olmocrModel">اسم النموذج المستخدم</label>
-                                    <input type="text" id="olmocrModel" name="olmocr_model" class="form-input" value="allenai/olmOCR-7b-0225-preview">
-                                    <span class="input-hint">اسم النموذج الذي سيتم إرساله في طلبات API.</span>
+                                    <input type="text" id="olmocrModel" name="olmocr_model" class="form-input" value="richardyoung/olmocr2:7b-q8">
+                                    <span class="input-hint">اسم النموذج المستخدم في خادم API (الافتراضي: richardyoung/olmocr2:7b-q8).</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mistral OCR Options Sub-panel -->
+                        <div id="mistralocrOptions" class="sub-panel" style="display: none;">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label" for="mistralApiKey">مفتاح API الخاص بـ Mistral AI</label>
+                                    <input type="password" id="mistralApiKey" name="mistral_api_key" class="form-input" placeholder="أدخل مفتاح API الخاص بـ Mistral">
+                                    <span class="input-hint">مطلوب للاتصال بخدمات Mistral AI OCR السحابية.</span>
                                 </div>
                             </div>
                         </div>
@@ -140,6 +166,10 @@
                         <button id="btnDownloadPdf" class="btn btn-secondary tooltip" data-tooltip="تحميل صور الاقتباسات كملف PDF" style="display: none;">
                             <i class="fa-solid fa-file-pdf"></i>
                             <span>تحميل PDF الصور</span>
+                        </button>
+                        <button id="btnDownloadFullText" class="btn btn-secondary tooltip" data-tooltip="تحميل النص الكامل للكتاب (.txt)" style="display: none;">
+                            <i class="fa-solid fa-file-lines"></i>
+                            <span>تحميل النص الكامل</span>
                         </button>
                     </div>
                 </div>
@@ -175,6 +205,6 @@
     <!-- Notification system -->
     <div id="toastContainer" class="toast-container"></div>
 
-    <script src="/static/main.js"></script>
+    <script src="/static/main.js?v=5"></script>
 </body>
 </html>

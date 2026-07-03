@@ -16,7 +16,8 @@ files = {
 data = {
     "context": "true",
     "context_margin": "80.0",
-    "merge_threshold": "20.0"
+    "merge_threshold": "20.0",
+    "ocr_engine": "easyocr"
 }
 
 try:

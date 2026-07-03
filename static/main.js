@@ -17,9 +17,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnCopyToClipboard = document.getElementById("btnCopyToClipboard");
     const btnDownloadJson = document.getElementById("btnDownloadJson");
     const btnDownloadPdf = document.getElementById("btnDownloadPdf");
-
+    const fullOcrToggle = document.getElementById("fullOcrToggle");
+    const btnDownloadFullText = document.getElementById("btnDownloadFullText");
+ 
     let currentHighlights = [];
     let compiledPdfPath = null;
+    let fullOcrPath = null;
 
     // --- Toast Notification Helper ---
     function showToast(message, type = "success") {
@@ -94,10 +97,38 @@ document.addEventListener("DOMContentLoaded", () => {
         contextOptions.style.display = e.target.checked ? "block" : "none";
     });
 
-    const olmocrToggle = document.getElementById("olmocrToggle");
+    const ocrEngine = document.getElementById("ocrEngine");
     const olmocrOptions = document.getElementById("olmocrOptions");
-    olmocrToggle.addEventListener("change", (e) => {
-        olmocrOptions.style.display = e.target.checked ? "block" : "none";
+    const mistralocrOptions = document.getElementById("mistralocrOptions");
+    const mistralApiKey = document.getElementById("mistralApiKey");
+    const olmocrApiKey = document.getElementById("olmocrApiKey");
+
+    // Load saved API keys from localStorage
+    const savedMistralKey = localStorage.getItem("qayem_mistral_api_key");
+    if (savedMistralKey) {
+        mistralApiKey.value = savedMistralKey;
+    }
+    const savedOlmocrKey = localStorage.getItem("qayem_olmocr_api_key");
+    if (savedOlmocrKey) {
+        olmocrApiKey.value = savedOlmocrKey;
+    }
+
+    // Save API keys to localStorage on input
+    mistralApiKey.addEventListener("input", (e) => {
+        localStorage.setItem("qayem_mistral_api_key", e.target.value.trim());
+    });
+    olmocrApiKey.addEventListener("input", (e) => {
+        localStorage.setItem("qayem_olmocr_api_key", e.target.value.trim());
+    });
+
+    ocrEngine.addEventListener("change", (e) => {
+        olmocrOptions.style.display = e.target.value === "olmocr" ? "block" : "none";
+        mistralocrOptions.style.display = e.target.value === "mistralocr" ? "block" : "none";
+        if (e.target.value === "mistralocr") {
+            mistralApiKey.setAttribute("required", "required");
+        } else {
+            mistralApiKey.removeAttribute("required");
+        }
     });
 
     // --- Submit Form and Extract Highlights ---
@@ -109,6 +140,13 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
+        // Validate Mistral API key if mistralocr is selected
+        if (ocrEngine.value === "mistralocr" && !document.getElementById("mistralApiKey").value.trim()) {
+            showToast("الرجاء إدخال مفتاح Mistral AI API أولاً", "warning");
+            document.getElementById("mistralApiKey").focus();
+            return;
+        }
+
         const taskId = "task_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
         const formData = new FormData();
         formData.append("pdf", pdfFile.files[0]);
@@ -116,17 +154,22 @@ document.addEventListener("DOMContentLoaded", () => {
         formData.append("context", contextToggle.checked);
         formData.append("context_margin", document.getElementById("contextMargin").value);
         formData.append("merge_threshold", document.getElementById("mergeThreshold").value);
-        formData.append("olmocr", olmocrToggle.checked);
+        formData.append("ocr_engine", ocrEngine.value);
+        formData.append("olmocr", ocrEngine.value === "olmocr" ? "true" : "false");
         formData.append("olmocr_server", document.getElementById("olmocrServer").value);
         formData.append("olmocr_api_key", document.getElementById("olmocrApiKey").value);
         formData.append("olmocr_model", document.getElementById("olmocrModel").value);
+        formData.append("mistral_api_key", document.getElementById("mistralApiKey").value);
+        formData.append("full_ocr", fullOcrToggle.checked);
 
         // Update UI states
         emptyState.style.display = "none";
         resultsList.style.display = "none";
         resultActions.style.display = "none";
         btnDownloadPdf.style.display = "none";
+        btnDownloadFullText.style.display = "none";
         compiledPdfPath = null;
+        fullOcrPath = null;
         loader.style.display = "flex";
         btnSubmit.disabled = true;
         
@@ -150,19 +193,51 @@ document.addEventListener("DOMContentLoaded", () => {
                     const phase = progressData.phase || "parsing";
                     
                     if (phase === "ocr") {
+                        let engineLabel = "EasyOCR";
+                        if (ocrEngine.value === "olmocr") {
+                            engineLabel = "olmOCR";
+                        } else if (ocrEngine.value === "mistralocr") {
+                            engineLabel = "Mistral OCR";
+                        }
                         if (progressData.percent !== undefined) {
                             const pct = progressData.percent;
                             loaderProgressBar.style.width = `${pct}%`;
-                            loaderProgressText.textContent = `جاري تشغيل التعرف الضوئي (olmOCR): الصفحة ${progressData.current} من ${progressData.total} (${pct}%)`;
+                            loaderProgressText.textContent = `جاري تشغيل التعرف الضوئي (تظليلات - ${engineLabel}): الصفحة ${progressData.current} من ${progressData.total} (${pct}%)`;
                         } else if (progressData.total > 0) {
                             const pct = Math.round((progressData.current / progressData.total) * 100);
-                            loaderProgressText.textContent = `جاري تشغيل التعرف الضوئي (olmOCR): الصفحة ${progressData.current} من ${progressData.total}`;
+                            loaderProgressText.textContent = `جاري تشغيل التعرف الضوئي (تظليلات - ${engineLabel}): الصفحة ${progressData.current} من ${progressData.total}`;
                             loaderProgressBar.style.width = `${pct}%`;
                         } else {
-                            loaderProgressText.textContent = `جاري تشغيل محرك التعرف الضوئي (olmOCR)...`;
+                            loaderProgressText.textContent = `جاري تشغيل محرك التعرف الضوئي (تظليلات - ${engineLabel})...`;
                             loaderProgressBar.style.width = `50%`;
                         }
-                        loaderText.textContent = "جاري التعرف على النصوص باستخدام Vision-Language Model...";
+                        loaderText.textContent = ocrEngine.value === "olmocr" 
+                            ? "جاري التعرف على النصوص باستخدام Vision-Language Model..." 
+                            : (ocrEngine.value === "mistralocr" 
+                               ? "جاري التعرف على النصوص باستخدام Mistral AI OCR..." 
+                               : "جاري التعرف على النصوص محلياً وبسرعة...");
+                    } else if (phase === "full_ocr") {
+                        let engineLabel = "EasyOCR";
+                        if (ocrEngine.value === "olmocr") {
+                            engineLabel = "olmOCR";
+                        } else if (ocrEngine.value === "mistralocr") {
+                            engineLabel = "Mistral OCR";
+                        } else if (ocrEngine.value === "native") {
+                            engineLabel = "مستخرج رقمي";
+                        }
+                        if (progressData.percent !== undefined) {
+                            const pct = progressData.percent;
+                            loaderProgressBar.style.width = `${pct}%`;
+                            loaderProgressText.textContent = `جاري استخراج النص الكامل للكتاب (${engineLabel}): الصفحة ${progressData.current} من ${progressData.total} (${pct}%)`;
+                        } else if (progressData.total > 0) {
+                            const pct = Math.round((progressData.current / progressData.total) * 100);
+                            loaderProgressText.textContent = `جاري استخراج النص الكامل للكتاب (${engineLabel}): الصفحة ${progressData.current} من ${progressData.total}`;
+                            loaderProgressBar.style.width = `${pct}%`;
+                        } else {
+                            loaderProgressText.textContent = `جاري استخراج النص الكامل للكتاب (${engineLabel})...`;
+                            loaderProgressBar.style.width = `50%`;
+                        }
+                        loaderText.textContent = "جاري التعرف وتحويل صفحات الكتاب بالكامل إلى ملف نصي...";
                     } else {
                         if (progressData.percent !== undefined) {
                             const pct = progressData.percent;
@@ -198,6 +273,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
             currentHighlights = data.highlights || [];
             compiledPdfPath = data.compiled_pdf_path || null;
+            fullOcrPath = data.full_ocr_txt_path || null;
             
             renderResults(currentHighlights);
             showToast(`تمت المعالجة بنجاح! تم استخراج ${currentHighlights.length} اقتباسات.`);
@@ -218,23 +294,26 @@ document.addEventListener("DOMContentLoaded", () => {
         loader.style.display = "none";
         resultsList.innerHTML = "";
         
+        // Show result actions block if we have compiled PDF or full OCR path, even with 0 highlights
+        if (compiledPdfPath || fullOcrPath) {
+            resultActions.style.display = "flex";
+            btnDownloadPdf.style.display = compiledPdfPath ? "inline-flex" : "none";
+            btnDownloadFullText.style.display = fullOcrPath ? "inline-flex" : "none";
+        } else {
+            resultActions.style.display = "none";
+        }
+
         if (highlights.length === 0) {
             emptyState.innerHTML = `
-                <i class="fa-solid fa-face-meh empty-icon"></i>
-                <h3>لم يتم العثور على أي تظليلات (Highlights)</h3>
-                <p>تأكد من أن الملف يحتوي بالفعل على تظليلات نصوص ملونة وحاول مرة أخرى.</p>
+                <i class="fa-solid fa-circle-info empty-icon"></i>
+                <h3>تمت معالجة الكتاب بنجاح!</h3>
+                <p>${fullOcrPath ? "يمكنك تحميل النص الكامل للكتاب باستخدام الزر في الأعلى." : "لم يتم العثور على أي تظليلات ملونة في هذا الملف."}</p>
             `;
             emptyState.style.display = "flex";
             return;
         }
 
         resultsList.style.display = "flex";
-        resultActions.style.display = "flex";
-        if (compiledPdfPath) {
-            btnDownloadPdf.style.display = "inline-flex";
-        } else {
-            btnDownloadPdf.style.display = "none";
-        }
 
         highlights.forEach((item, index) => {
             const card = document.createElement("div");
@@ -262,11 +341,22 @@ document.addEventListener("DOMContentLoaded", () => {
                 `;
             }
 
+            let engineBadge = "";
+            if (item.ocr_engine) {
+                let badgeText = item.ocr_engine;
+                if (item.ocr_engine === "native") badgeText = "رقمي أصلي";
+                else if (item.ocr_engine === "easyocr") badgeText = "EasyOCR";
+                else if (item.ocr_engine === "olmocr") badgeText = "olmOCR";
+                else if (item.ocr_engine === "mistralocr") badgeText = "Mistral OCR";
+                engineBadge = `<span><i class="fa-solid fa-gear"></i>${badgeText}</span>`;
+            }
+
             card.innerHTML = `
                 <div class="result-card-header">
                     <div class="result-meta">
                         <span><i class="fa-solid fa-hashtag"></i>اقتباس ${highlightId}</span>
                         <span><i class="fa-solid fa-file-lines"></i>صفحة ${item.page}</span>
+                        ${engineBadge}
                     </div>
                     <button class="btn-card-copy tooltip" data-tooltip="نسخ الاقتباس الحالي" data-index="${index}">
                         <i class="fa-solid fa-copy"></i>
@@ -337,5 +427,17 @@ document.addEventListener("DOMContentLoaded", () => {
         downloadAnchor.click();
         downloadAnchor.remove();
         showToast("جاري تحميل ملف PDF للصور");
+    });
+
+    btnDownloadFullText.addEventListener("click", () => {
+        if (!fullOcrPath) return;
+        
+        const downloadAnchor = document.createElement("a");
+        downloadAnchor.setAttribute("href", `/${fullOcrPath}`);
+        downloadAnchor.setAttribute("download", `${fileName.textContent.replace(".pdf", "")}_full.txt`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+        showToast("جاري تحميل النص الكامل للكتاب");
     });
 });
